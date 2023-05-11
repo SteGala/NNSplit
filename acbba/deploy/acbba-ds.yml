@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: acbba-ds
+spec:
+  selector:
+    matchLabels:
+      app: acbba
+  template:
+    metadata:
+      labels:
+        app: acbba
+    spec:
+      dnsPolicy: ClusterFirstWithHostNet
+      hostNetwork: true
+      containers:
+      - name: my-container
+        image: stegala/acbba:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080

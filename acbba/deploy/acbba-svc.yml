@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: acbba
+spec:
+  selector:
+    app: acbba
+  ports:
+    - name: http
+      port: 8080
