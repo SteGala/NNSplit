@@ -16,6 +16,19 @@ spec:
       containers:
       - name: my-container
         image: stegala/acbba:latest
+        env:
+          - name: service_name
+            value: acbba
+          - name: discovery_port
+            value: "8080"
+          - name: discovery_time
+            value: "30"
+          - name: custom_resource_name
+            value: NNSplitRequest
+          - name: custom_resource_group
+            value: my-group.example.com
+          - name: custom_api_version
+            value: v1
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

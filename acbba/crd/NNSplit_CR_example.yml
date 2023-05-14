@@ -1,0 +1,6 @@
+apiVersion: my-group.example.com/v1
+kind: NNSplitRequest
+metadata:
+  name: example-nnsplitrequest
+spec:
+  input: "Hello world!"

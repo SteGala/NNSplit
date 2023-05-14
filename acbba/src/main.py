@@ -1,53 +1,56 @@
-import http.server
-import socketserver
-import socket
-import threading 
-import time
-import requests
 import logging
+from connect.server import ConnectionHandlerServer
+from connect.client import ConnectionHandlerClient
+from kubernetes_cr.kubernetes_cr import KubernetesHandler
+import os
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
 
-class Handler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        try:
-            my_hostname = socket.gethostname()
-            my_ip_address = socket.gethostbyname(my_hostname)
-            message = f'My Hostname: {my_hostname}\nMy IP Address: {my_ip_address}\n'
-            self.send_response(200)
-            self.send_header('Content-type', 'text/plain')
-            self.end_headers()
-            self.wfile.write(bytes(message, "utf8"))
-        except socket.gaierror:
-            self.send_error(500, 'Failed to resolve hostname\n')
+# start with default values
+service_name = "acbba"
+discovery_port = 8080
+discovery_time = 30 # seconds
+custom_resource_name = "NNSplitRequest"
+custom_resource_group = "my-group.example.com"
+custom_api_version = "v1"
+
+def ReadEnvVariables():
+    env_var = os.environ.get('service_name')
+    if env_var is not None:
+        service_name = env_var
+    logging.info(f"Discovery process performed on service {service_name}")
+
+    env_var = os.environ.get('discovery_port')
+    if env_var is not None:
+        discovery_port = int(env_var)
+    logging.info(f"Discovery process performed on port {discovery_port}")
+
+    env_var = os.environ.get('discovery_time')
+    if env_var is not None:
+        discovery_time = int(env_var)
+    logging.info(f"Discovery process performed every {discovery_time}s")
+
+    env_var = os.environ.get('custom_resource_name')
+    if env_var is not None:
+        custom_resource_name = env_var
+    
+    env_var = os.environ.get('custom_resource_group')
+    if env_var is not None:
+        custom_resource_group = env_var
+
+    env_var = os.environ.get('custom_api_version')
+    if env_var is not None:
+        custom_api_version = env_var
+    logging.info(f"Watching for custom resources {custom_resource_name} of group {custom_resource_group} version {custom_api_version}")
 
 if __name__ == '__main__':
-    PORT = 8080
-    httpd = socketserver.TCPServer(("", PORT), Handler)
+    ReadEnvVariables()
 
-    print(f"Serving on port {PORT}")
-    httpd_thread = threading.Thread(target=httpd.serve_forever)
-    httpd_thread.start()
+    conn_server = ConnectionHandlerServer(discovery_port)
+    conn_client = ConnectionHandlerClient(discovery_port, service_name, discovery_time)
 
-    ips = []
-    success = False
+    k8s = KubernetesHandler(custom_resource_name, custom_resource_group, custom_api_version)
+    k8s.WatchForEvents()
+    
 
-    while not success:
-        try:
-        # Look up the IP addresses of all pods running the headless service
-            _, _, ips = socket.gethostbyname_ex('acbba')
-            success = True
-        except:
-            logging.info("There is no service acbba. Retry after 10 seconds")
-            time.sleep(10)
-            pass
-
-    # Connect to each pod using its IP address
-    for ip in ips:
-        # Connect to the pod at IP address 'ip'
-        # For example, send an HTTP request to the pod:
-        response = requests.get(f"http://{ip}:" + str(PORT) + "/")
-        logging.info(f"Pod at IP address {ip} responded with status code {response.status_code}")
-
-    time.sleep(1000)

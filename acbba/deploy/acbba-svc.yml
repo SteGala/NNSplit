@@ -3,6 +3,7 @@ kind: Service
 metadata:
   name: acbba
 spec:
+  clusterIP: None
   selector:
     app: acbba
   ports:
