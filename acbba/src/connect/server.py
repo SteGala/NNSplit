@@ -3,6 +3,7 @@ import socket
 import threading
 import socketserver
 
+
 class ConnectionHandlerCallback(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         try:
@@ -15,9 +16,10 @@ class ConnectionHandlerCallback(http.server.BaseHTTPRequestHandler):
             self.wfile.write(bytes(message, "utf8"))
         except socket.gaierror:
             self.send_error(500, 'Failed to resolve hostname\n')
-    
+
     def log_message(self, format, *args):
         return
+
 
 class ConnectionHandlerServer():
     def __init__(self, port) -> None:
@@ -26,5 +28,3 @@ class ConnectionHandlerServer():
         print(f"Serving on port {port}")
         httpd_thread = threading.Thread(target=httpd.serve_forever)
         httpd_thread.start()
-
-    

@@ -10,10 +10,11 @@ logging.basicConfig(level=logging.INFO,
 # start with default values
 service_name = "acbba"
 discovery_port = 8080
-discovery_time = 30 # seconds
+discovery_time = 30  # seconds
 custom_resource_name = "nnsplitrequests"
 custom_resource_group = "my-group.example.com"
 custom_api_version = "v1"
+
 
 def ReadEnvVariables():
     env_var = os.environ.get('service_name')
@@ -34,7 +35,7 @@ def ReadEnvVariables():
     env_var = os.environ.get('custom_resource_name')
     if env_var is not None:
         custom_resource_name = env_var
-    
+
     env_var = os.environ.get('custom_resource_group')
     if env_var is not None:
         custom_resource_group = env_var
@@ -42,15 +43,17 @@ def ReadEnvVariables():
     env_var = os.environ.get('custom_api_version')
     if env_var is not None:
         custom_api_version = env_var
-    logging.info(f"Watching for custom resources {custom_resource_name} of group {custom_resource_group} version {custom_api_version}")
+    logging.info(
+        f"Watching for custom resources {custom_resource_name} of group {custom_resource_group} version {custom_api_version}")
+
 
 if __name__ == '__main__':
     ReadEnvVariables()
 
     conn_server = ConnectionHandlerServer(discovery_port)
-    conn_client = ConnectionHandlerClient(discovery_port, service_name, discovery_time)
+    conn_client = ConnectionHandlerClient(
+        discovery_port, service_name, discovery_time)
 
-    k8s = KubernetesHandler(custom_resource_name, custom_resource_group, custom_api_version)
+    k8s = KubernetesHandler(custom_resource_name,
+                            custom_resource_group, custom_api_version)
     k8s.WatchForEvents()
-    
-
