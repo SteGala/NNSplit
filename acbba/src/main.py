@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO,
 service_name = "acbba"
 discovery_port = 8080
 discovery_time = 30 # seconds
-custom_resource_name = "NNSplitRequest"
+custom_resource_name = "nnsplitrequests"
 custom_resource_group = "my-group.example.com"
 custom_api_version = "v1"
 

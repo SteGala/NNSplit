@@ -8,6 +8,8 @@ class ConnectionHandlerClient:
     def __init__(self, port, hostname, frequency) -> None:
         self.__ips = []
         self.__ips_lock = threading.Lock()
+        self.__container_ip = self.__get_container_ip()
+        logging.info(f"Container IP: {self.__container_ip}")
 
         self.__client_thread = threading.Thread(target=self.__scan_for_hosts, args=[port, hostname, frequency])
         self.__client_thread.start()
@@ -32,6 +34,9 @@ class ConnectionHandlerClient:
 
                 # Connect to each pod using its IP address
                 for ip in ips:
+                    if ip == self.__container_ip:
+                        continue
+
                     # Connect to the pod at IP address 'ip'
                     # For example, send an HTTP request to the pod:
                     response = requests.get(f"http://{ip}:" + str(port) + "/")
@@ -41,3 +46,16 @@ class ConnectionHandlerClient:
                 
                 logging.info(f"Found {len(self.__ips)} available hosts: {self.__ips}")
             time.sleep(frequency)
+
+    def __get_container_ip(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0)
+        try:
+                # doesn't even have to be reachable
+            s.connect(('10.254.254.254', 1))
+            IP = s.getsockname()[0]
+        except Exception:
+            IP = '127.0.0.1'
+        finally:
+            s.close()
+        return IP

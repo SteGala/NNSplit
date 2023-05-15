@@ -24,7 +24,7 @@ spec:
           - name: discovery_time
             value: "30"
           - name: custom_resource_name
-            value: NNSplitRequest
+            value: nnsplitrequests
           - name: custom_resource_group
             value: my-group.example.com
           - name: custom_api_version

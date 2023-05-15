@@ -1,5 +1,6 @@
 from kubernetes import client, config, watch
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
@@ -9,17 +10,24 @@ class KubernetesHandler:
         # Load Kubernetes configuration
         config.load_incluster_config()
 
+        # Create a Kubernetes API client
+        api = client.CoreV1Api()
+
+        # List pods in the default namespace
+        pods = api.list_namespaced_pod(namespace="default")
+        for pod in pods.items:
+            print(pod.metadata.name)
+
         # Get the namespace in which the code is executed
         self.__namespace = open("/var/run/secrets/kubernetes.io/serviceaccount/namespace").read()
-        logging.info(f"Watching for custom resources on {self.__namespace} namespace")
+
+        # Create a Kubernetes API client
+        self.__api = client.CustomObjectsApi()
 
         # Define the custom resource name to watch
         self.__custom_resource_name = custom_resource_name
         self.__custom_resource_group = custom_resource_group
         self.__custom_api_version = custom_api_version
-
-        # Create a Kubernetes API client
-        self.__api = client.CustomObjectsApi()
 
     def WatchForEvents(self):
         # Watch for changes to the custom resource
@@ -38,5 +46,5 @@ class KubernetesHandler:
 
 # Define a function to handle changes to the custom resource
 def handle_event(event):
-    print("Received event: %s %s" % (event['type'], event['object']['metadata']['name']))
+    logging.info(f"Received event: {event['type']} {event['object']['metadata']['name']}")
 
