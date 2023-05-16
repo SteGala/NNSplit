@@ -15,12 +15,28 @@ spec:
             spec:
               type: object
               properties:
-                input: 
+                job_id:
                   type: string
-                output: 
+                user:
+                  type: integer
+                num_gpu:
+                  type: integer
+                num_cpu:
+                  type: integer
+                duration:
                   type: string
-          required:
-            - spec
+                job_name:
+                  type: string
+                submit_time:
+                  type: integer
+                gpu_type:
+                  type: string
+                num_inst:
+                  type: integer
+                size:
+                  type: string
+                read_count:
+                  type: integer
   scope: Namespaced
   names:
     plural: nnsplitrequests
@@ -28,3 +44,4 @@ spec:
     kind: NNSplitRequest
     shortNames:
       - nnsr
+

@@ -29,6 +29,8 @@ spec:
             value: my-group.example.com
           - name: custom_api_version
             value: v1
+          - name: alpha_value
+            value: "0.8"
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

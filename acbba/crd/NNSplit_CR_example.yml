@@ -1,6 +1,17 @@
 apiVersion: my-group.example.com/v1
 kind: NNSplitRequest
-metadata:
+metadata:  
   name: example-nnsplitrequest
+  namespace: default
 spec:
-  input: "Hello world!"
+  job_id: "12345"
+  user: 0
+  num_gpu: 2
+  num_cpu: 4
+  duration: "1h"
+  job_name: "example-job"
+  submit_time: 123456 
+  gpu_type: "NVIDIA Tesla V100"
+  num_inst: 10
+  size: "1GB"
+  read_count: 100
