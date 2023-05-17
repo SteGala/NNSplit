@@ -19,7 +19,7 @@ TRACE = 5
 
 layer_number = 6
 min_layer_number = 1  # Min number of layers per node
-max_layer_number = layer_number  # Max number of layers per node
+max_layer_number = layer_number/2  # Max number of layers per node
 counter = 0  # Messages counter
 
 tot_GPU = 1000
@@ -130,7 +130,6 @@ class node:
                 headers = {'Content-type': 'application/json'}
 
                 try:
-                    logging.info(data)
                     response = requests.post(url, data=json.dumps(data), headers=headers)
                     response.raise_for_status()  # Raise exception for non-2xx status codes
 
@@ -144,17 +143,16 @@ class node:
                               " " + str(self.bids[self.item['job_id']]['auction_id']))
 
     def print_node_state(self, msg, bid=False, type='debug'):
-        logger_method = getattr(logging, type)
-        logger_method(str(msg) +
+        #logger_method = getattr(logging, type)
+        logging.info(str(msg) +
                       " - edge_id:" + str(self.id) +
                       " job_id:" + str(self.item['job_id']) +
                       " from_edge:" + str(self.item['edge_id']) +
                       " available GPU:" + str(self.updated_gpu) +
                       " available CPU:" + str(self.updated_cpu) +
                       (("\n"+str(self.bids[self.item['job_id']]['auction_id']) if bid else "") +
-                       ("\n"+str(self.item['auction_id']) if bid else "\n"))
-                      )
-
+                       ("\n"+str(self.item['auction_id']) if bid else "\n")))
+        
     def update_local_val(self, index, id, bid, timestamp):
         self.bids[self.item['job_id']]['job_id'] = self.item['job_id']
         self.bids[self.item['job_id']]['auction_id'][index] = id

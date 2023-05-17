@@ -16,7 +16,7 @@ spec:
               type: object
               properties:
                 job_id:
-                  type: string
+                  type: integer
                 user:
                   type: integer
                 num_gpu:

@@ -28,6 +28,9 @@ class ACBBAServer:
             response = {'message': 'Data received successfully'}
             self.wfile.write(json.dumps(response).encode('utf-8'))
 
+        def log_message(self, format, *args):
+            return
+
     def __init__(self, queue, port) -> None:
         self.port = port
         self.queue = queue
