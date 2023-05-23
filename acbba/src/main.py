@@ -1,5 +1,4 @@
 import logging
-import time
 from kubernetes_cr.kubernetes_cr import KubernetesHandler
 import os
 
@@ -16,6 +15,7 @@ custom_api_version = "v1"
 alpha_value = 0.8
 node_bandwidth = 1000000000
 num_clients = 50
+utility_function = "alpha_GPU_CPU"
 
 
 def ReadEnvVariables():
@@ -72,11 +72,17 @@ def ReadEnvVariables():
         num_clients = float(env_var)
     logging.info(f"Number of simulated clients {num_clients}")
 
+    env_var = os.environ.get('utility_function')
+    global utility_function
+    if env_var is not None:
+        utility_function = env_var
+    logging.info(f"Utility function {utility_function}")
+
 
 if __name__ == '__main__':
     ReadEnvVariables()
 
     k8s = KubernetesHandler(custom_resource_name,
-                            custom_resource_group, custom_api_version, discovery_port, service_name, discovery_time, alpha_value, node_bandwidth, num_clients)
+                            custom_resource_group, custom_api_version, discovery_port, service_name, discovery_time, alpha_value, node_bandwidth, num_clients, utility_function)
 
     k8s.WatchForEvents()

@@ -14,35 +14,44 @@ from acbba.server import ACBBAServer
 from acbba.topology import topology
 import numpy as np
 from acbba.utils import *
+import math
+import threading
+
+# cose da implementare
+# trasformare l'ID in una stringa in modo da poter prendere il nome del pod
+# fare in modo di generare la topologia nel momento in cui si riceve la crd, e quindi far usare al sistema di bidding la topologia specifica (mappa?)
+# potrebbe valer la pena fare la stessa cosa con gli IP
 
 TRACE = 5
 
-layer_number = 6
-min_layer_number = 1  # Min number of layers per node
-max_layer_number = layer_number/2  # Max number of layers per node
+layer_number = 6.0
+min_layer_number = 1.0  # Min number of layers per node
+max_layer_number = layer_number/2.0  # Max number of layers per node
 counter = 0  # Messages counter
 
 tot_GPU = 1000
 tot_CPU = 1000
 tot_BW = 1000000000
 
+
 class node:
 
-    def __init__(self, communication_port, ips, alpha_value, node_bw, num_clients):
+    def __init__(self, communication_port, ips, alpha_value, node_bw, num_clients, utility):
         self.id = self.__generate_node_id_from_ips(ips)
         self.node_ip = get_container_ip()
-        
+
         n_GPU = get_total_gpu_cores()
         if n_GPU == None:
-            #sys.exit(f"Failed to load GPU data on node. Exiting...")
-            logging.info(f"Failed to get number of GPU core on the node. Setting the value to 0")
+            # sys.exit(f"Failed to load GPU data on node. Exiting...")
+            logging.info(
+                f"Failed to get number of GPU core on the node. Setting the value to 0")
             n_GPU = 0
         self.initial_gpu = float(n_GPU)
         self.updated_gpu = self.initial_gpu
 
         n_cpu = get_total_cpu_cores()
         if n_cpu == None:
-            sys.exit(f"Failed to get number of CPU core on the node. Exiting...")            
+            sys.exit(f"Failed to get number of CPU core on the node. Exiting...")
         self.initial_cpu = float(n_cpu)
         self.updated_cpu = self.initial_cpu
 
@@ -56,6 +65,7 @@ class node:
         self.alpha = alpha_value
         self.ips = sort_ip_addresses(ips)
         self.ips.insert(self.id, self.node_ip)
+        self.utility = utility
 
         self.topology = topology(func_name='complete_graph', max_bandwidth=node_bw,
                                  min_bandwidth=node_bw/2, num_clients=num_clients, num_edges=len(self.ips))
@@ -101,13 +111,21 @@ class node:
         self.q.join()
 
     def utility_function(self):
-        # BW vs CPU
-        return (self.alpha*(self.updated_bw[self.item['user']][self.id]/tot_BW))+((1-self.alpha)*(self.updated_cpu/tot_CPU))
-        # GPU vs BW
-        return (self.alpha*(self.updated_gpu/tot_GPU))+((1-self.alpha)*(self.updated_bw[self.item['user']][self.id]/tot_BW))
-        # GPU vs CPU
-        return (self.alpha*(self.updated_gpu/tot_GPU))+((1-self.alpha)*(self.updated_cpu/tot_CPU))
-        
+        def f(x, alpha, beta):
+            return math.exp(-(alpha/2)*(x-beta)**2)
+
+        if self.utility == 'stefano':
+            return f(self.item['NN_cpu'][0]/self.item['NN_gpu'][0], self.alpha, self.initial_cpu/self.initial_gpu)
+        elif self.utility == 'alpha_BW_CPU':
+            # return (config.a*(self.updated_bw[self.item['user']][self.id]/config.tot_bw))+((1-config.a)*(self.updated_cpu/config.tot_cpu)) #BW vs CPU
+            return (self.alpha*(self.updated_bw[self.item['user']][self.id]/tot_BW))+((1-self.alpha)*(self.updated_cpu/tot_CPU))
+        elif self.utility == 'alpha_GPU_CPU':
+            return (self.alpha*(self.updated_gpu/tot_GPU))+((1-self.alpha)*(self.updated_cpu/tot_CPU))
+        elif self.utility == 'alpha_GPU_BW':
+            return (self.alpha*(self.updated_gpu/tot_GPU))+((1-self.alpha)*(self.updated_bw[self.item['user']][self.id]/tot_BW))
+        else:
+            sys.exit(
+                f"Unsupported utility function {self.utility}. Exiting...")
 
     def forward_to_neighbohors(self):
         for i in range(len(self.ips)):
@@ -130,29 +148,31 @@ class node:
                 headers = {'Content-type': 'application/json'}
 
                 try:
-                    response = requests.post(url, data=json.dumps(data), headers=headers)
+                    response = requests.post(
+                        url, data=json.dumps(data), headers=headers)
                     response.raise_for_status()  # Raise exception for non-2xx status codes
 
                     # Check the return code
                     if response.status_code != 200:
                         logging.info("Server response:", response.json())
                 except requests.exceptions.RequestException as e:
-                    logging.info("An error occurred while sending the request:", e)
-                
+                    logging.info(
+                        "An error occurred while sending the request:", e)
+
                 logging.debug("FORWARD " + str(self.id) + " to " + str(i) +
                               " " + str(self.bids[self.item['job_id']]['auction_id']))
 
     def print_node_state(self, msg, bid=False, type='debug'):
-        #logger_method = getattr(logging, type)
+        # logger_method = getattr(logging, type)
         logging.info(str(msg) +
-                      " - edge_id:" + str(self.id) +
-                      " job_id:" + str(self.item['job_id']) +
-                      " from_edge:" + str(self.item['edge_id']) +
-                      " available GPU:" + str(self.updated_gpu) +
-                      " available CPU:" + str(self.updated_cpu) +
-                      (("\n"+str(self.bids[self.item['job_id']]['auction_id']) if bid else "") +
-                       ("\n"+str(self.item['auction_id']) if bid else "\n")))
-        
+                     " - edge_id:" + str(self.id) +
+                     " job_id:" + str(self.item['job_id']) +
+                     " from_edge:" + str(self.item['edge_id']) +
+                     " available GPU:" + str(self.updated_gpu) +
+                     " available CPU:" + str(self.updated_cpu) +
+                     (("\n"+str(self.bids[self.item['job_id']]['auction_id']) if bid else "") +
+                      ("\n"+str(self.item['auction_id']) if bid else "\n")))
+
     def update_local_val(self, index, id, bid, timestamp):
         self.bids[self.item['job_id']]['job_id'] = self.item['job_id']
         self.bids[self.item['job_id']]['auction_id'][index] = id
@@ -174,8 +194,8 @@ class node:
             if id == self.id:
                 self.updated_gpu += self.bids[self.item['job_id']]['NN_gpu'][i]
                 self.updated_cpu += self.bids[self.item['job_id']]['NN_cpu'][i]
-                self.updated_bw[self.item['user']
-                                ][self.id] += self.item['NN_data_size'][i]
+                self.updated_bw += self.item['NN_data_size'][i]
+                # self.updated_bw[self.item['user']][self.id] += self.item['NN_data_size'][i]
                 self.bids[self.item['job_id']]['auction_id'][i] = float('-inf')
                 self.bids[self.item['job_id']]['x'][i] = 0
                 self.bids[self.item['job_id']]['bid'][i] = float('-inf')
@@ -224,6 +244,12 @@ class node:
                             self.item['NN_gpu'][i] <= self.updated_gpu and \
                             self.item['NN_cpu'][i] <= self.updated_cpu and \
                             self.layers < max_layer_number:
+
+                        logging.info(self.item['NN_gpu'])
+                        logging.info(self.updated_gpu)
+                        logging.info(self.item['NN_cpu'])
+                        logging.info(self.updated_cpu)
+
                         self.bids[self.item['job_id']
                                   ]['bid'][i] = self.utility_function()
                         self.bids[self.item['job_id']
@@ -683,16 +709,17 @@ class node:
 
                 # print(str(self.q.qsize()) +" polpetta - user:"+ str(self.id) + " job_id: "  + str(self.item['job_id'])  + " from " + str(self.item['user']))
 
+
 def message_data(job_id, user, num_gpu, num_cpu, duration, job_name, submit_time, gpu_type, num_inst, size, bandwidth):
-    
+
     gpu = int(num_gpu / layer_number)
     cpu = int(num_cpu / layer_number)
     bw = int(float(bandwidth) / layer_number)
 
-    NN_gpu = np.ones(layer_number) * gpu
-    NN_cpu = np.ones(layer_number) * cpu
-    NN_data_size = np.ones(layer_number) * bw
-    
+    NN_gpu = np.ones(int(layer_number)) * gpu
+    NN_cpu = np.ones(int(layer_number)) * cpu
+    NN_data_size = np.ones(int(layer_number)) * bw
+
     data = {
         "job_id": int(),
         "user": int(),
@@ -704,24 +731,23 @@ def message_data(job_id, user, num_gpu, num_cpu, duration, job_name, submit_time
         "gpu_type": int(),
         "num_inst": int(),
         "size": int(),
-        "edge_id":int(),
+        "edge_id": int(),
         "NN_gpu": NN_gpu,
         "NN_cpu": NN_cpu,
         "NN_data_size": NN_data_size
-        }
+    }
 
-
-    data['edge_id']=None
-    data['job_id']=job_id
-    data['user']=user
-    data['num_gpu']=num_gpu
-    data['num_cpu']=num_cpu
-    data['duration']=duration
-    data['job_name']=job_name
-    data['submit_time']=submit_time
-    data['gpu_type']=gpu_type
-    data['num_inst']=num_inst
-    data['size']=size
-    data['job_id']=job_id
+    data['edge_id'] = None
+    data['job_id'] = job_id
+    data['user'] = user
+    data['num_gpu'] = num_gpu
+    data['num_cpu'] = num_cpu
+    data['duration'] = duration
+    data['job_name'] = job_name
+    data['submit_time'] = submit_time
+    data['gpu_type'] = gpu_type
+    data['num_inst'] = num_inst
+    data['size'] = size
+    data['job_id'] = job_id
 
     return data

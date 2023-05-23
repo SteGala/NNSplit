@@ -13,7 +13,7 @@ acbba_port = 5555
 
 
 class KubernetesHandler:
-    def __init__(self, custom_resource_name, custom_resource_group, custom_api_version, discovery_port, service_name, discovery_time, alpha_value, node_bw, num_clients) -> None:
+    def __init__(self, custom_resource_name, custom_resource_group, custom_api_version, discovery_port, service_name, discovery_time, alpha_value, node_bw, num_clients, utility) -> None:
         # Load Kubernetes configuration
         config.load_incluster_config()
 
@@ -40,7 +40,7 @@ class KubernetesHandler:
         conn_client = ConnectionHandlerClient(
             self.__discovery_port, self.__service_name, self.__discovery_time)
         self.__node = node(acbba_port, conn_client.get_ips(),
-                           alpha_value, node_bw, num_clients)
+                           alpha_value, node_bw, num_clients, utility)
 
         threading.Thread(target=self.__node.work, daemon=True).start()
         logging.info(f"Ready to receive nnsplit requests")

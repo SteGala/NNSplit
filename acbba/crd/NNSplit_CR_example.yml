@@ -6,7 +6,7 @@ metadata:
 spec:
   job_id: 0
   user: 0
-  num_gpu: 0
+  num_gpu: 4
   num_cpu: 6
   duration: "1h"
   job_name: "example-job"
