@@ -9,7 +9,7 @@ class ConnectionHandlerClient:
     def __init__(self, port, hostname, frequency) -> None:
         self.__ips = []
         self.__container_ip = get_container_ip()
-        logging.info(f"Container IP: {self.__container_ip}")
+        #logging.info(f"Container IP: {self.__container_ip}")
 
         self.__scan_for_hosts(port, hostname, frequency)
 
@@ -29,15 +29,13 @@ class ConnectionHandlerClient:
         self.__ips = []
         # Connect to each pod using its IP address
         for ip in ips:
-            if ip == self.__container_ip:
-                continue
+            #if ip == self.__container_ip:
+            #    continue
             # Connect to the pod at IP address 'ip'
             # For example, send an HTTP request to the pod:
             response = requests.get(f"http://{ip}:" + str(port) + "/")
             if response.status_code == 200:
                 self.__ips.append(ip)
-        logging.info(
-            f"Found {len(self.__ips)} available hosts: {self.__ips}")
 
     def get_ips(self):
         return self.__ips

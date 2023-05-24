@@ -5,6 +5,7 @@ from acbba.node import *
 from connect.server import ConnectionHandlerServer
 from connect.client import ConnectionHandlerClient
 import threading
+from acbba.topology import topology
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
@@ -16,6 +17,8 @@ class KubernetesHandler:
     def __init__(self, custom_resource_name, custom_resource_group, custom_api_version, discovery_port, service_name, discovery_time, alpha_value, node_bw, num_clients, utility) -> None:
         # Load Kubernetes configuration
         config.load_incluster_config()
+
+        node_name = os.environ['HOSTNAME']
 
         # Get the namespace in which the code is executed
         self.__namespace = open(
@@ -31,16 +34,11 @@ class KubernetesHandler:
         self.__discovery_port = discovery_port
         self.__service_name = service_name
         self.__discovery_time = discovery_time
+        self.__node_bw = node_bw
 
         _ = ConnectionHandlerServer(self.__discovery_port)
 
-        # wait for the other replicas to be up and running
-        time.sleep(25)
-
-        conn_client = ConnectionHandlerClient(
-            self.__discovery_port, self.__service_name, self.__discovery_time)
-        self.__node = node(acbba_port, conn_client.get_ips(),
-                           alpha_value, node_bw, num_clients, utility)
+        self.__node = node(acbba_port, alpha_value, utility, node_name)
 
         threading.Thread(target=self.__node.work, daemon=True).start()
         logging.info(f"Ready to receive nnsplit requests")
@@ -79,5 +77,10 @@ class KubernetesHandler:
             size = custom_resource["spec"]["size"]
             read_count = custom_resource["spec"]["read_count"]
 
+            conn_client = ConnectionHandlerClient(
+            self.__discovery_port, self.__service_name, self.__discovery_time)
+            top = topology(func_name='complete_graph', max_bandwidth=self.__node_bw,
+                                 min_bandwidth=self.__node_bw/2, ip_edges=conn_client.get_ips())
+
             self.__node.append_data(message_data(job_id, user, num_gpu, num_cpu,
-                                    duration, job_name, submit_time, gpu_type, num_inst, size, read_count))
+                                    duration, job_name, submit_time, gpu_type, num_inst, size, read_count, top, conn_client.get_ips()))

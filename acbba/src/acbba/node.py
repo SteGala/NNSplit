@@ -7,15 +7,17 @@ import queue
 from datetime import datetime, timedelta
 import copy
 import logging
+import time
 import requests
 from acbba.utils import *
 import sys
 from acbba.server import ACBBAServer
-from acbba.topology import topology
 import numpy as np
 from acbba.utils import *
 import math
 import threading
+from kubernetes import client, config
+
 
 # cose da implementare
 # trasformare l'ID in una stringa in modo da poter prendere il nome del pod
@@ -36,9 +38,10 @@ tot_BW = 1000000000
 
 class node:
 
-    def __init__(self, communication_port, ips, alpha_value, node_bw, num_clients, utility):
-        self.id = self.__generate_node_id_from_ips(ips)
+    def __init__(self, communication_port, alpha_value, utility, node_name):
+        self.id = get_container_ip()
         self.node_ip = get_container_ip()
+        self.node_name = node_name
 
         n_GPU = get_total_gpu_cores()
         if n_GPU == None:
@@ -63,22 +66,29 @@ class node:
         self.layers = 0
         self.sequence = True
         self.alpha = alpha_value
-        self.ips = sort_ip_addresses(ips)
-        self.ips.insert(self.id, self.node_ip)
         self.utility = utility
 
-        self.topology = topology(func_name='complete_graph', max_bandwidth=node_bw,
-                                 min_bandwidth=node_bw/2, num_clients=num_clients, num_edges=len(self.ips))
+        # -----
+        # Shared variables among threads
+        # -----
+        self.__shared_resource_lock = threading.Lock()
+        self.topology = {}
+        self.ips = {}
+        self.cpu_bid = {}
+        self.gpu_bid = {}
+        self.last_bid = {}
+        self.ongoing_bidding = False
+        # END shared variables
 
-        self.initial_bw = self.topology.b
-        self.updated_bw = self.initial_bw
+        self.initial_bw = {}
+        self.updated_bw = {}
 
         self.communication_port = communication_port
         self.server = ACBBAServer(self.q, communication_port)
         self.server.run_server()
 
         logging.info(
-            f"Initialized acbba node instance with ID {self.id}. CPU: {self.initial_cpu}, GPU: {self.initial_gpu}")
+            f"Initialized acbba node instance with ID `{self.id}`. CPU: {self.initial_cpu}, GPU: {self.initial_gpu}")
 
     def __generate_node_id_from_ips(self, ips):
         def is_ip_greater_than(ip1, ip2):
@@ -113,54 +123,54 @@ class node:
     def utility_function(self):
         def f(x, alpha, beta):
             return math.exp(-(alpha/2)*(x-beta)**2)
-
-        if self.utility == 'stefano':
-            return f(self.item['NN_cpu'][0]/self.item['NN_gpu'][0], self.alpha, self.initial_cpu/self.initial_gpu)
-        elif self.utility == 'alpha_BW_CPU':
-            # return (config.a*(self.updated_bw[self.item['user']][self.id]/config.tot_bw))+((1-config.a)*(self.updated_cpu/config.tot_cpu)) #BW vs CPU
-            return (self.alpha*(self.updated_bw[self.item['user']][self.id]/tot_BW))+((1-self.alpha)*(self.updated_cpu/tot_CPU))
-        elif self.utility == 'alpha_GPU_CPU':
-            return (self.alpha*(self.updated_gpu/tot_GPU))+((1-self.alpha)*(self.updated_cpu/tot_CPU))
-        elif self.utility == 'alpha_GPU_BW':
-            return (self.alpha*(self.updated_gpu/tot_GPU))+((1-self.alpha)*(self.updated_bw[self.item['user']][self.id]/tot_BW))
-        else:
-            sys.exit(
-                f"Unsupported utility function {self.utility}. Exiting...")
+        with self.__shared_resource_lock:
+            if self.utility == 'stefano':
+                return f(self.item['NN_cpu'][0]/self.item['NN_gpu'][0], self.alpha, self.initial_cpu/self.initial_gpu)
+            elif self.utility == 'alpha_BW_CPU':
+                return (self.alpha*(self.updated_bw[self.item['job_id']][self.id][self.id]/tot_BW))+((1-self.alpha)*(self.updated_cpu/tot_CPU))
+            elif self.utility == 'alpha_GPU_CPU':
+                return (self.alpha*(self.updated_gpu/tot_GPU))+((1-self.alpha)*(self.updated_cpu/tot_CPU))
+            elif self.utility == 'alpha_GPU_BW':
+                return (self.alpha*(self.updated_gpu/tot_GPU))+((1-self.alpha)*(self.updated_bw[self.item['job_id']][self.id][self.id]/tot_BW))
+            else:
+                sys.exit(
+                    f"Unsupported utility function {self.utility}. Exiting...")
 
     def forward_to_neighbohors(self):
-        for i in range(len(self.ips)):
-            if self.topology.to()[i][self.id] and self.id != i:
-                data = {
-                    "job_id": self.item['job_id'],
-                    "user": self.item['user'],
-                    "edge_id": self.id,
-                    "auction_id": self.bids[self.item['job_id']]['auction_id'],
-                    "NN_gpu": self.item['NN_gpu'].tolist() if type(self.item['NN_gpu']) is np.ndarray else self.item['NN_gpu'],
-                    "NN_cpu": self.item['NN_cpu'].tolist() if type(self.item['NN_cpu']) is np.ndarray else self.item['NN_cpu'],
-                    "NN_data_size": self.item['NN_data_size'].tolist() if type(self.item['NN_data_size']) is np.ndarray else self.item['NN_data_size'],
-                    "bid": self.bids[self.item['job_id']]['bid'],
-                    "x": self.bids[self.item['job_id']]['x'],
-                    "timestamp": datetime_list_to_string_list(self.bids[self.item['job_id']]['timestamp'])
-                }
+        with self.__shared_resource_lock:
+            for ip in (self.ips[self.item['job_id']]):
+                if self.topology[self.item['job_id']].to()[ip][self.id] and self.id != ip:
+                    data = {
+                        "job_id": self.item['job_id'],
+                        "user": self.item['user'],
+                        "edge_id": self.id,
+                        "auction_id": self.bids[self.item['job_id']]['auction_id'],
+                        "NN_gpu": self.item['NN_gpu'].tolist() if type(self.item['NN_gpu']) is np.ndarray else self.item['NN_gpu'],
+                        "NN_cpu": self.item['NN_cpu'].tolist() if type(self.item['NN_cpu']) is np.ndarray else self.item['NN_cpu'],
+                        "NN_data_size": self.item['NN_data_size'].tolist() if type(self.item['NN_data_size']) is np.ndarray else self.item['NN_data_size'],
+                        "bid": self.bids[self.item['job_id']]['bid'],
+                        "x": self.bids[self.item['job_id']]['x'],
+                        "timestamp": datetime_list_to_string_list(self.bids[self.item['job_id']]['timestamp'])
+                    }
 
-                # Send POST request to the server
-                url = f"http://{self.ips[i]}:{self.communication_port}"
-                headers = {'Content-type': 'application/json'}
+                    # Send POST request to the server
+                    url = f"http://{ip}:{self.communication_port}"
+                    headers = {'Content-type': 'application/json'}
 
-                try:
-                    response = requests.post(
-                        url, data=json.dumps(data), headers=headers)
-                    response.raise_for_status()  # Raise exception for non-2xx status codes
+                    try:
+                        response = requests.post(
+                            url, data=json.dumps(data), headers=headers)
+                        response.raise_for_status()  # Raise exception for non-2xx status codes
 
-                    # Check the return code
-                    if response.status_code != 200:
-                        logging.info("Server response:", response.json())
-                except requests.exceptions.RequestException as e:
-                    logging.info(
-                        "An error occurred while sending the request:", e)
+                        # Check the return code
+                        if response.status_code != 200:
+                            logging.info("Server response:", response.json())
+                    except requests.exceptions.RequestException as e:
+                        logging.info(
+                            "An error occurred while sending the request:", e)
 
-                logging.debug("FORWARD " + str(self.id) + " to " + str(i) +
-                              " " + str(self.bids[self.item['job_id']]['auction_id']))
+                    logging.debug("FORWARD " + str(self.id) + " to " + str(ip) +
+                                " " + str(self.bids[self.item['job_id']]['auction_id']))
 
     def print_node_state(self, msg, bid=False, type='debug'):
         # logger_method = getattr(logging, type)
@@ -172,6 +182,14 @@ class node:
                      " available CPU:" + str(self.updated_cpu) +
                      (("\n"+str(self.bids[self.item['job_id']]['auction_id']) if bid else "") +
                       ("\n"+str(self.item['auction_id']) if bid else "\n")))
+        
+    def save_node_state(self):
+        with self.__shared_resource_lock:
+            self.cpu_bid[self.item['job_id']]["current"] = self.updated_cpu
+            self.gpu_bid[self.item['job_id']]["current"] = self.updated_gpu
+            if "auction_id" in self.item:
+                self.last_bid[self.item['job_id']] = self.item['auction_id']
+
 
     def update_local_val(self, index, id, bid, timestamp):
         self.bids[self.item['job_id']]['job_id'] = self.item['job_id']
@@ -194,14 +212,15 @@ class node:
             if id == self.id:
                 self.updated_gpu += self.bids[self.item['job_id']]['NN_gpu'][i]
                 self.updated_cpu += self.bids[self.item['job_id']]['NN_cpu'][i]
-                self.updated_bw += self.item['NN_data_size'][i]
+                with self.__shared_resource_lock:
+                    self.updated_bw[self.item['job_id']] += self.item['NN_data_size'][i]
                 # self.updated_bw[self.item['user']][self.id] += self.item['NN_data_size'][i]
                 self.bids[self.item['job_id']]['auction_id'][i] = float('-inf')
                 self.bids[self.item['job_id']]['x'][i] = 0
                 self.bids[self.item['job_id']]['bid'][i] = float('-inf')
 
     def init_null(self):
-        self.print_node_state('INITNULL')
+        #self.print_node_state('INITNULL')
 
         self.bids[self.item['job_id']] = {
             "job_id": self.item['job_id'],
@@ -236,7 +255,8 @@ class node:
             self.layers = 0
             NN_len = len(self.item['NN_gpu'])
             required_bw = self.item['NN_data_size'][0]
-            avail_bw = self.updated_bw[self.item['user']][self.id]
+            with self.__shared_resource_lock:
+                avail_bw = self.updated_bw[self.item['job_id']][self.id][self.id]
 
             if required_bw <= avail_bw:  # TODO node id needed
                 for i in range(0, NN_len):
@@ -245,10 +265,10 @@ class node:
                             self.item['NN_cpu'][i] <= self.updated_cpu and \
                             self.layers < max_layer_number:
 
-                        logging.info(self.item['NN_gpu'])
-                        logging.info(self.updated_gpu)
-                        logging.info(self.item['NN_cpu'])
-                        logging.info(self.updated_cpu)
+                        #logging.info(self.item['NN_gpu'])
+                        #logging.info(self.updated_gpu)
+                        #logging.info(self.item['NN_cpu'])
+                        #logging.info(self.updated_cpu)
 
                         self.bids[self.item['job_id']
                                   ]['bid'][i] = self.utility_function()
@@ -283,7 +303,8 @@ class node:
                 self.unbid()
             else:
                 # TODO else update bandwidth
-                self.updated_bw[self.item['user']
+                with self.__shared_resource_lock:
+                    self.updated_bw[self.item['job_id']][self.id
                                 ][self.id] -= self.item['NN_data_size'][0]
 
                 self.forward_to_neighbohors()
@@ -293,14 +314,15 @@ class node:
 
     def rebid(self):
 
-        self.print_node_state('REBID')
+        #self.print_node_state('REBID')
 
         if self.item['job_id'] in self.bids:
 
             self.sequence = True
             self.layers = 0
             NN_len = len(self.item['NN_gpu'])
-            avail_bw = self.updated_bw[self.item['user']][self.id]
+            with self.__shared_resource_lock:
+                avail_bw = self.updated_bw[self.item['job_id']][self.id][self.id]
 
             for i in range(0, NN_len):
                 if self.bids[self.item['job_id']]['auction_id'][i] == float('-inf'):
@@ -323,8 +345,9 @@ class node:
                         self.bids[self.item['job_id']
                                   ]['bid_cpu'][i] = self.updated_cpu
                         # TODO update with BW
-                        self.bids[self.item['job_id']
-                                  ]['bid_bw'][i] = self.updated_bw[self.item['user']][self.id]
+                        with self.__shared_resource_lock:
+                            self.bids[self.item['job_id']
+                                  ]['bid_bw'][i] = self.updated_bw[self.item['job_id']][self.id][self.id]
                         self.updated_gpu = self.updated_gpu - \
                             self.item['NN_gpu'][i]
                         self.updated_cpu = self.updated_cpu - \
@@ -349,7 +372,8 @@ class node:
             if self.bids[self.item['job_id']]['auction_id'].count(self.id) < min_layer_number:
                 self.unbid()
             else:
-                self.updated_bw[self.item['user']][self.id] -= self.item['NN_data_size'][self.bids[self.item['job_id']]
+                with self.__shared_resource_lock:
+                    self.updated_bw[self.item['job_id']][self.id][self.id] -= self.item['NN_data_size'][self.bids[self.item['job_id']]
                                                                                          ['auction_id'].index(self.id)]  # TODO else update bandwidth
 
                 self.forward_to_neighbohors()
@@ -391,7 +415,8 @@ class node:
                                     self.item['NN_gpu'][index]
                                 self.updated_cpu = self.updated_cpu + \
                                     self.item['NN_cpu'][index]
-                                self.updated_bw[self.item['user']][self.id] = self.updated_bw[self.item['user']
+                                with self.__shared_resource_lock:
+                                    self.updated_bw[self.item['job_id']][self.id][self.id] = self.updated_bw[self.item['job_id']][self.id
                                                                                               ][self.id] + self.item['NN_data_size'][index]
                                 index = self.update_local_val(
                                     index, z_kj, self.item['bid'][index], self.item['timestamp'][index])
@@ -513,7 +538,8 @@ class node:
                                     self.item['NN_gpu'][index]
                                 self.updated_cpu = self.updated_cpu + \
                                     self.item['NN_cpu'][index]
-                                self.updated_bw[self.item['user']][self.id] = self.updated_bw[self.item['user']
+                                with self.__shared_resource_lock:
+                                    self.updated_bw[self.item['job_id']][self.id][self.id] = self.updated_bw[self.item['job_id']][self.id
                                                                                               ][self.id] + self.item['NN_data_size'][index]
                                 index = self.update_local_val(
                                     index, z_kj, self.item['bid'][index], self.item['timestamp'][index])
@@ -624,11 +650,11 @@ class node:
                 if self.id not in self.bids[self.item['job_id']]['auction_id'] and float('-inf') in self.bids[self.item['job_id']]['auction_id']:
                     self.rebid()
                 else:
-                    self.print_node_state('Consensus -')
+                    #self.print_node_state('Consensus -')
                     pass
 
             else:
-                self.print_node_state('BEFORE', True)
+                #self.print_node_state('BEFORE', True)
                 rebroadcast = self.deconfliction()
 
                 if self.id not in self.bids[self.item['job_id']]['auction_id'] and float('-inf') in self.bids[self.item['job_id']]['auction_id']:
@@ -636,7 +662,7 @@ class node:
 
                 elif rebroadcast:
                     self.forward_to_neighbohors()
-                self.print_node_state('AFTER', True)
+                #self.print_node_state('AFTER', True)
 
         else:
             self.print_node_state(
@@ -679,38 +705,149 @@ class node:
                 self.item = None
                 self.item = copy.deepcopy(self.q.get())
 
+                if 'topology' in self.item and 'ips' in self.item:
+                    logging.info(f"Received first message for job {self.item['job_id']}. Starting the bidding process.")
+                    logging.info(f"Agents participating to the bidding session: {self.item['ips']}")
+
+                    with self.__shared_resource_lock:
+                        if self.ongoing_bidding:
+                            self.q.put(self.item)
+                            self.q.task_done()
+                            continue
+
+                        self.topology[self.item['job_id']] = self.item['topology']
+                        self.ips[self.item['job_id']] = self.item['ips']
+
+                        self.initial_bw[self.item['job_id']] = self.topology[self.item['job_id']].b
+                        self.updated_bw[self.item['job_id']] = self.topology[self.item['job_id']].b
+
+                        self.cpu_bid[self.item['job_id']] = {"start": self.updated_cpu}
+                        self.gpu_bid[self.item['job_id']] = {"start": self.updated_gpu}
+                        self.last_bid[self.item['job_id']] = {}
+                        self.ongoing_bidding = True
+
+                    threading.Thread(target=self.check_bidding, args=[self.item['job_id']], daemon=True).start()
+
                 if self.item['job_id'] not in self.bids:
                     self.init_null()
+                    self.save_node_state()
 
                 # check msg type
                 if self.item['edge_id'] is not None and self.item['user'] in self.user_requests:
                     # edge to edge request
-                    self.print_node_state('IF1 q:' + str(self.q.qsize()), True)
                     self.new_msg()
+                    self.save_node_state()
 
                 elif self.item['edge_id'] is None and self.item['user'] not in self.user_requests:
                     # brand new request from client
-                    self.print_node_state('IF2 q:' + str(self.q.qsize()))
                     self.user_requests.append(self.item['user'])
                     self.first_msg()
+                    self.save_node_state()
 
                 elif self.item['edge_id'] is not None and self.item['user'] not in self.user_requests:
                     # edge anticipated client request
-                    self.print_node_state('IF3 q:' + str(self.q.qsize()))
                     self.user_requests.append(self.item['user'])
                     self.new_msg()
+                    self.save_node_state()
 
                 elif self.item['edge_id'] is None and self.item['user'] in self.user_requests:
                     # client after edge request
-                    self.print_node_state('IF4 q:' + str(self.q.qsize()))
                     self.rebid()
+                    self.save_node_state()
 
                 self.q.task_done()
 
-                # print(str(self.q.qsize()) +" polpetta - user:"+ str(self.id) + " job_id: "  + str(self.item['job_id'])  + " from " + str(self.item['user']))
+    def __create_pod(self, node_name, n_cpu, id):
+        logging.info(f"Creating pod 'nn-pod-{str(id)}' on node {str(node_name)}")
 
+        config.load_incluster_config()
 
-def message_data(job_id, user, num_gpu, num_cpu, duration, job_name, submit_time, gpu_type, num_inst, size, bandwidth):
+        api = client.CoreV1Api()
+
+        pod_manifest = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "name": "nn-pod-" + str(id),
+            "labels": {
+                "app": "my-app"
+            }
+        },
+        "spec": {
+            "affinity": {
+                "nodeAffinity": {
+                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                        "nodeSelectorTerms": [
+                            {
+                                "matchExpressions": [
+                                    {
+                                        "key": "kubernetes.io/hostname",
+                                        "operator": "In",
+                                        "values": [str(node_name)]  # Adjust node names as needed
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            },
+            "containers": [
+                {
+                    "name": "my-container",
+                    "image": "nginx:latest",
+                    "ports": [
+                        {
+                            "containerPort": 80
+                        }
+                    ],
+                    "resources": {
+                        "requests": {
+                            "cpu": str(n_cpu),  # Adjust CPU request as needed
+                        },
+                        "limits": {
+                            "cpu": str(n_cpu),  # Adjust CPU limit as needed
+                        }
+                    }
+                }
+            ]
+        }}
+
+        _ = api.create_namespaced_pod(
+            body=pod_manifest,
+            namespace="default"
+        )
+
+    def check_bidding(self, job_id):
+        time.sleep(5)
+
+        logging.info(f"Bidding process completed for job '{job_id}'")
+        with self.__shared_resource_lock:
+            #logging.info(f"\nCPU: {self.cpu_bid[self.item['job_id']]}")
+            #logging.info(f"\nGPU: {self.gpu_bid[self.item['job_id']]}")
+            #logging.info(f"\nBID: {self.last_bid[self.item['job_id']]}")
+
+            self.ongoing_bidding = False
+
+        if self.cpu_bid[self.item['job_id']]['current'] != self.cpu_bid[self.item['job_id']]['start'] or \
+            self.gpu_bid[self.item['job_id']]['current'] != self.gpu_bid[self.item['job_id']]['start']:
+            count = 0
+            amount = float(self.cpu_bid[self.item['job_id']]['start']) - float(self.cpu_bid[self.item['job_id']]['current'])
+            n_layers = 0
+            for ip in self.last_bid[self.item['job_id']]:
+                if ip == self.node_ip:
+                    n_layers = n_layers + 1
+            logging.info(self.last_bid[self.item['job_id']])
+            for ip in self.last_bid[self.item['job_id']]:
+                if ip == self.node_ip:
+                    self.__create_pod(self.node_name, amount/n_layers, count)
+                count = count + 1
+            
+        else:
+            logging.info(f"No layers assinged to this node in the bidding session.")
+
+    
+
+def message_data(job_id, user, num_gpu, num_cpu, duration, job_name, submit_time, gpu_type, num_inst, size, bandwidth, infra_topology, ips):
 
     gpu = int(num_gpu / layer_number)
     cpu = int(num_cpu / layer_number)
@@ -749,5 +886,7 @@ def message_data(job_id, user, num_gpu, num_cpu, duration, job_name, submit_time
     data['num_inst'] = num_inst
     data['size'] = size
     data['job_id'] = job_id
+    data['topology'] = infra_topology
+    data['ips'] = ips
 
     return data

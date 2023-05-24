@@ -3,20 +3,34 @@ Topology building module
 """
 
 import numpy as np
+import random
 
 
 # metti qua la topologia
 
 class topology:
-    def __init__(self, func_name, max_bandwidth, min_bandwidth, num_clients, num_edges):
+    def __init__(self, func_name, max_bandwidth, min_bandwidth, ip_edges):
         self.nax_bandwidth = max_bandwidth
         self.nin_bandwidth = min_bandwidth
-        self.n = num_edges  # asjacency matrix
+        self.n = len(ip_edges)  # asjacency matrix
 
         self.to = getattr(self, func_name)
 
-        self.b = np.random.uniform(min_bandwidth, max_bandwidth, size=(
-            num_clients, num_edges))  # bandwidth matrix
+        #self.b = np.random.uniform(min_bandwidth, max_bandwidth, size=(
+        #    num_clients, num_edges))  # bandwidth matrix
+
+        self.b = {}
+        self.__complete_graph = {}
+        for ip1 in ip_edges:
+            edge_bw = {}
+            edge_conn = {}
+            rand_bw = random.randint(min_bandwidth, max_bandwidth)
+            for ip2 in ip_edges:
+                edge_bw[ip2] = rand_bw
+                edge_conn[ip2] = 1
+            self.b[ip1] = edge_bw    
+            self.__complete_graph[ip1] = edge_conn
+
 
     def call_func(self):
         return self.to()
@@ -44,7 +58,7 @@ class topology:
         return adjacency_matrix
 
     def complete_graph(self):
-        return np.ones((self.n, self.n)) - np.eye(self.n)
+        return self.__complete_graph
 
     def ring_graph(self):
         adjacency_matrix = np.zeros((self.n, self.n))
