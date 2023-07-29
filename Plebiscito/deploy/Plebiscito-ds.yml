@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: acbba-ds
+  name: plebiscito-ds
 spec:
   selector:
     matchLabels:
-      app: acbba
+      app: plebiscito
   template:
     metadata:
       labels:
-        app: acbba
+        app: plebiscito
     spec:
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       containers:
       - name: my-container
-        image: stegala/acbba:latest
+        image: stegala/plebiscito:latest
         env:
           - name: service_name
-            value: acbba
+            value: plebiscito
           - name: discovery_port
             value: "8080"
           - name: discovery_time
@@ -31,6 +31,12 @@ spec:
             value: v1
           - name: alpha_value
             value: "0.8"
+          - name: prometheus-url
+            value: prometheus-k8s.monitoring.svc.cluster.local"
+          - name: prometheus_port
+            value: "9090"
+          - name: network_threshold
+            value: "0.6"
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

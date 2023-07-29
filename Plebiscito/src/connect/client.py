@@ -2,7 +2,7 @@ import socket
 import time
 import logging
 import requests
-from acbba.utils import get_container_ip
+from plebiscito.utils import get_container_ip
 
 
 class ConnectionHandlerClient:

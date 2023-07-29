@@ -16,7 +16,9 @@ alpha_value = 0.8
 node_bandwidth = 1000000000
 num_clients = 50
 utility_function = "alpha_GPU_CPU"
-
+prometheus_url = "prometheus-k8s.monitoring.svc.cluster.local"
+prometheus_port = 8080
+network_threshold = 0.5
 
 def ReadEnvVariables():
     env_var = os.environ.get('service_name')
@@ -78,11 +80,28 @@ def ReadEnvVariables():
         utility_function = env_var
     logging.info(f"Utility function {utility_function}")
 
+    env_var = os.environ.get('prometheus_url')
+    global prometheus_url
+    if env_var is not None:
+        prometheus_url = env_var
+
+    env_var = os.environ.get('prometheus_port')
+    global prometheus_port
+    if env_var is not None:
+        prometheus_port = int(env_var)
+    logging.info(f"Prometheus metrics available at {prometheus_url}:{prometheus_port}")
+
+    env_var = os.environ.get('network_threshold')
+    global network_threshold
+    if env_var is not None:
+        network_threshold = float(env_var)
+    logging.info(f"Network threashold to disable clients is set to {network_threshold}")
+
 
 if __name__ == '__main__':
     ReadEnvVariables()
 
-    k8s = KubernetesHandler(custom_resource_name,
-                            custom_resource_group, custom_api_version, discovery_port, service_name, discovery_time, alpha_value, node_bandwidth, num_clients, utility_function)
+    k8s = KubernetesHandler(custom_resource_name, custom_resource_group, custom_api_version, discovery_port, service_name,
+                            discovery_time, alpha_value, node_bandwidth, num_clients, utility_function, prometheus_url, prometheus_port, network_threshold)
 
     k8s.WatchForEvents()

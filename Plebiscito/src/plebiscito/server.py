@@ -1,10 +1,10 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import threading
-from acbba.utils import *
+from plebiscito.utils import *
 
 
-class ACBBAServer:
+class PlebiscitoServer:
     class MyRequestHandler(BaseHTTPRequestHandler):
         def __init__(self, request, client_address, server, queue):
             self.queue = queue

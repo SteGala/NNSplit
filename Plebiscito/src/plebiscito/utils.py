@@ -132,9 +132,13 @@ datetime_format = "%Y-%m-%d %H:%M:%S"
 #    return sum_normal ** 2 / (len(data) * sum_square)
 
 
+def get_total_memory():
+    total_memory_bytes = psutil.virtual_memory().total
+    total_memory_gb = total_memory_bytes / (1024 ** 3)
+    return total_memory_gb
+
 def get_total_cpu_cores():
     return psutil.cpu_count(logical=True)
-
 
 def get_total_gpu_cores():
     try:

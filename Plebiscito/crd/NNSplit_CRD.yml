@@ -23,6 +23,8 @@ spec:
                   type: integer
                 num_cpu:
                   type: integer
+                num_ram:
+                  type: integer
                 duration:
                   type: string
                 job_name:

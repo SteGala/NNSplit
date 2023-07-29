@@ -6,6 +6,7 @@ RUN pip install requests
 RUN pip install kubernetes
 RUN pip install psutil
 RUN pip install numpy
+RUN pip install prometheus_api_client
 
 # use the previous stage and copy the src files
 FROM dep as final
