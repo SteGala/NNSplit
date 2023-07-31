@@ -3,7 +3,7 @@ FROM python:3.10.6 as dep
 
 # Install the required Python packages
 RUN pip install requests
-RUN pip install kubernetes
+RUN pip install kubernetes==24.2.0
 RUN pip install psutil
 RUN pip install numpy
 RUN pip install prometheus_api_client

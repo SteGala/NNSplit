@@ -32,7 +32,7 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["pods"]
-  verbs: ["get", "list", "create"]
+  verbs: ["get", "list", "create", "delete"]
 
 ---
 kind: RoleBinding

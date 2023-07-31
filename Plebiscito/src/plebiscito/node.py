@@ -1029,30 +1029,106 @@ class node:
     def enable_bidding(self):
         logging.info("Network pressure under the threashold. Will participate to any further bidding process.")
         with self.__enable_bidding_flag_lock:
-            self.bidding_enabled = True        
+            self.bidding_enabled = True     
 
     def __create_pod(self, node_name, n_cpu, n_ram, id, duration, job_id):
+        config.load_incluster_config()
+
+        pod_definition = {
+            'apiVersion': 'v1',
+            'kind': 'Pod',
+            'metadata': {
+                'name': "nn-pod-" + str(job_id) + "-" + str(id)
+            },
+            'spec': {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [str(node_name)]  # Adjust node names as needed
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                #"terminationGracePeriodSeconds": int(duration),
+                'containers': [{
+                    'name': 'nginx-container',
+                    'image': 'nginx:latest',
+                    'ports': [{
+                        'containerPort': 80
+                    }],
+                    "resources": {
+                        "requests": {
+                            "cpu": str(n_cpu),  # Adjust CPU request as needed
+                            #"memory": str(n_ram)
+                        },
+                        "limits": {
+                            "cpu": str(n_cpu),  # Adjust CPU limit as needed
+                            #"memory": str(n_ram)
+                        }
+                    }
+                }]
+            }
+        }
+
+        v1 = client.CoreV1Api()
+        namespace = 'default'  # Change this to the desired namespace
+
+        resp = v1.create_namespaced_pod(body=pod_definition, namespace=namespace)
+        print("Pod created. Status='%s'" % str(resp.status))
+
+        threading.Thread(target=self.__delete_pod, args=["nn-pod-" + str(job_id) + "-" + str(id), int(duration)], daemon=True).start()
+
+    def __delete_pod(self, name, duration):
+        logging.info(f"Deleting pod {name} in {duration}s")
+        time.sleep(duration)
+
+        config.load_incluster_config()
+
+        # Create a Kubernetes API client
+        api = client.CoreV1Api()
+
+        try:
+            # Delete the pod in the specified namespace
+            api.delete_namespaced_pod(name=name, namespace="default", grace_period_seconds=0)
+            print(f"Pod '{name}' in namespace 'default' has been deleted.")
+        except:
+            print(f"Error deleting pod.")
+            pass
+
+   
+    def __create_pod_old(self, node_name, n_cpu, n_ram, id, duration, job_id):
         logging.info(f"Creating pod 'nn-pod-{str(id)}' on node {str(node_name)}")
 
         config.load_incluster_config()
 
-        pod = client.V1Pod()
-        pod.metadata = client.V1ObjectMeta(name="nn-pod-" + str(job_id) + "-" + str(id))
-        pod.spec = client.V1PodSpec(
-            containers=[
-                client.V1Container(
-                    name="example-container",
-                    image="nginx:latest",
-                    resources=client.V1ResourceRequirements(
-                    requests={"cpu": str(n_cpu), "memory": str(n_ram)},
-                    limits={"cpu": str(n_cpu), "memory": str(n_ram)},
-                ),
-                )
-            ],
-            node_selector={"kubernetes.io/hostname": str(node_name)},
-            termination_grace_period_seconds=int(duration),
-            volumes=[]
-        )
+        # pod = client.V1Pod()
+        # pod.metadata = client.V1ObjectMeta(name="nn-pod-" + str(job_id) + "-" + str(id))
+        # pod.spec = client.V1PodSpec(
+        #     automount_service_account_token=False,
+        #     service_account_name="default",
+        #     containers=[
+        #         client.V1Container(
+        #             name="example-container",
+        #             image="nginx:latest",
+        #             resources=client.V1ResourceRequirements(
+        #             requests={"cpu": str(n_cpu), "memory": str(n_ram)},
+        #             limits={"cpu": str(n_cpu), "memory": str(n_ram)},
+        #         ),
+        #         )
+        #     ],
+        #     node_selector={"kubernetes.io/hostname": str(node_name)},
+        #     termination_grace_period_seconds=int(duration),
+        #     #volumes=[]
+        # )
 
         
         #volumes = pod.spec.get('volumes', [])
@@ -1064,69 +1140,68 @@ class node:
         #pod.spec['volumes'] = []
 
         # Create the Pod in the Kubernetes cluster
-        api_instance = client.CoreV1Api()
-        api_instance.create_namespaced_pod(namespace="default", body=pod)
+        # api_instance = client.CoreV1Api()
+        # api_instance.create_namespaced_pod(namespace="default", body=pod)
 
+        api = client.CoreV1Api()
 
-        # api = client.CoreV1Api()
+        pod_manifest = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "name": "nn-pod-" + str(job_id) + "-" + str(id),
+            "labels": {
+                "app": "my-app"
+            }
+        },
+        "spec": {
+            "affinity": {
+                "nodeAffinity": {
+                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                        "nodeSelectorTerms": [
+                            {
+                                "matchExpressions": [
+                                    {
+                                        "key": "kubernetes.io/hostname",
+                                        "operator": "In",
+                                        "values": [str(node_name)]  # Adjust node names as needed
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            },
+            "volumes" : [],
+            "terminationGracePeriodSeconds": int(duration),
+            "containers": [
+                {
+                    "name": "my-container",
+                    "image": "nginx:latest",
+                    "volumeMounts": [],
+                    "ports": [
+                        {
+                            "containerPort": 80
+                        }
+                    ],
+                    "resources": {
+                        "requests": {
+                            "cpu": str(n_cpu),  # Adjust CPU request as needed
+                            "memory": str(n_ram)
+                        },
+                        "limits": {
+                            "cpu": str(n_cpu),  # Adjust CPU limit as needed
+                            "memory": str(n_ram)
+                        }
+                    }
+                }
+            ]
+        }}
 
-        # pod_manifest = {
-        # "apiVersion": "v1",
-        # "kind": "Pod",
-        # "metadata": {
-        #     "name": "nn-pod-" + str(job_id) + "-" + str(id),
-        #     "labels": {
-        #         "app": "my-app"
-        #     }
-        # },
-        # "spec": {
-        #     "affinity": {
-        #         "nodeAffinity": {
-        #             "requiredDuringSchedulingIgnoredDuringExecution": {
-        #                 "nodeSelectorTerms": [
-        #                     {
-        #                         "matchExpressions": [
-        #                             {
-        #                                 "key": "kubernetes.io/hostname",
-        #                                 "operator": "In",
-        #                                 "values": [str(node_name)]  # Adjust node names as needed
-        #                             }
-        #                         ]
-        #                     }
-        #                 ]
-        #             }
-        #         }
-        #     },
-        #     "volumes" : [],
-        #     "terminationGracePeriodSeconds": int(duration),
-        #     "containers": [
-        #         {
-        #             "name": "my-container",
-        #             "image": "nginx:latest",
-        #             "volumeMounts": [],
-        #             "ports": [
-        #                 {
-        #                     "containerPort": 80
-        #                 }
-        #             ],
-        #             "resources": {
-        #                 "requests": {
-        #                     "cpu": str(n_cpu),  # Adjust CPU request as needed
-        #                     "memory": str(n_ram)
-        #                 },
-        #                 "limits": {
-        #                     "cpu": str(n_cpu),  # Adjust CPU limit as needed
-        #                     "memory": str(n_ram)
-        #                 }
-        #             }
-        #         }
-        #     ]
-        # }}
-
-        # _ = api.create_namespaced_pod(
-        #     body=pod_manifest,
-        #     namespace="default"
-        # )
+        _ = api.create_namespaced_pod(
+            body=pod_manifest,
+            namespace="default"
+        )
 
     def check_bidding(self, job):
         time.sleep(5)

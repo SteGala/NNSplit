@@ -7,9 +7,9 @@ import socketserver
 class ConnectionHandlerCallback(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            my_hostname = socket.gethostname()
-            my_ip_address = socket.gethostbyname(my_hostname)
-            message = f'My Hostname: {my_hostname}\nMy IP Address: {my_ip_address}\n'
+            #my_hostname = socket.gethostname()
+            #my_ip_address = socket.gethostbyname(my_hostname)
+            message = f'Ping\n'
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()

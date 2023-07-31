@@ -100,6 +100,7 @@ class KubernetesHandler:
                                     duration, read_count, conn_client.get_ips(), top, ram))
 
     def get_used_bandwidth(self):
+        return 0, 0
         # Define the PromQL query
         query = "rate(node_network_receive_bytes_total{job=\"node-exporter\", instance=\"" + self.__node_name + "\", device!=\"lo\"}[1m]) * 8"  # Replace with your desired PromQL query
         result_receive = self.__prometheus_connect.custom_query(query)

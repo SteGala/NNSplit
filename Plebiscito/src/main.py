@@ -21,6 +21,8 @@ prometheus_port = 8080
 network_threshold = 0.5
 
 def ReadEnvVariables():
+    logging.info(f"Version v.0.1")
+
     env_var = os.environ.get('service_name')
     global service_name
     if env_var is not None:

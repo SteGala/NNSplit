@@ -32,7 +32,7 @@ spec:
           - name: alpha_value
             value: "0.8"
           - name: prometheus-url
-            value: prometheus-k8s.monitoring.svc.cluster.local"
+            value: prometheus-k8s.monitoring.svc.cluster.local
           - name: prometheus_port
             value: "9090"
           - name: network_threshold

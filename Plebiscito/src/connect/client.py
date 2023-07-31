@@ -27,6 +27,8 @@ class ConnectionHandlerClient:
                 pass
         # Clean the list of ips
         self.__ips = []
+
+        logging.info(f"Detected {ips} under service {hostname}.")
         # Connect to each pod using its IP address
         for ip in ips:
             #if ip == self.__container_ip:
